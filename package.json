@@ -1,6 +1,6 @@
 {
   "name": "linstall",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Link local dependencies and install others through NPM install",
   "main": "cli.js",
   "scripts": {
