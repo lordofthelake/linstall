@@ -3,18 +3,29 @@
 var path    = require('path');
 var child   = require('child_process');
 
+var fs      = require('fs-extra');
 var args    = require('yargs').argv;
 var _       = require('lodash');
 var tracer  = require('tracer');
 
 var Q       = require('q');
-var mkdirp  = require('mkdirp');
 
 var checkDependencies = require('check-dependencies');
+
+Q.longStackSupport = true;
 
 var logger = tracer.colorConsole({
   format: '[{{timestamp}}] {{message}}'
 });
+
+function fileExistsSync(d) {
+  try { 
+    fs.lstatSync(d); 
+    return true; 
+  } catch (er) { 
+    return false; 
+  }
+}
 
 var command = function (root, command) {
   var cmd = command.slice(0);
@@ -48,45 +59,30 @@ var collectLinks = function (root) {
     }).value();
 };
 
-var npmInstall = function (root) {
-  return command(root, ['npm', 'install']);
-};
-
-var ensureDir = function (root, dir) {
-  var deferred = Q.defer();
-  logger.info('%s > mkdir -p %s', root, path.resolve(dir, '..'));
-  mkdirp(path.resolve(dir, '..'), function (err) {
-    if(err)
-      deferred.reject(err);
-    else
-      deferred.resolve();
-  });
-
-  return deferred.promise;
-};
-
-var lnS = function (root, base, target) {
-  return command(root, ['ln', '-s', base, target]);
-};
-
-var makeLink = function (root, base, target) {
-  return ensureDir(root, target).then(function () {
-    return lnS(root, base, target);
-  });
-};
-
-var linkAll = function (root, packageMapping) {
-  return Q.all(_.map(packageMapping, function (absoluteDir, pkg) {
-    return makeLink(root, absoluteDir, path.resolve(root, 'node_modules', pkg));
-  }));
-};
-
 var linkAndInstall = function (root) {
-  return linkAll(root, collectLinks(root))
-    .then(function () {
-      return npmInstall(root);
+
+  return Q.all(
+    _.map(collectLinks(root), function (origin, moduleName) {
+      var target = path.resolve(root, 'node_modules', moduleName);
+
+      return Q.nfcall(fs.ensureDir, path.resolve(target, '..'))
+        .then(function () {
+          if(fileExistsSync(target)) {
+            logger.debug('%s > %s exists, removing', root, target);
+            return Q.nfcall(fs.remove, target);
+          } else {
+            logger.trace('%s > %s doesn\' exist', root, target);
+          }
+        })
+        .then(function () {
+          logger.debug('%s > symlink %s -> %s', root, origin, target);
+          return Q.nfcall(fs.symlink, origin, target);
+        });
+    })).then(function () {
+      return command(root, ['npm', 'install']);
     });
 };
+
 
 Q.all(_.map(args._, function (dir) {
   var root = path.resolve(dir);
@@ -95,7 +91,7 @@ Q.all(_.map(args._, function (dir) {
   return Q(checkDependencies({packageDir: root}))
     .then(function (result) {
       if(result.depsWereOk) { 
-        logger.info("%s > dependencies satisfied", root);
+        logger.debug("%s > dependencies were already satisfied", root);
       } else {
         return linkAndInstall(root);
       }

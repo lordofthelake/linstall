@@ -20,8 +20,9 @@
   "author": "Michele Piccirillo (http://github.com/lordofthelake)",
   "license": "MIT",
   "dependencies": {
+    "check-dependencies": "^0.9.2",
+    "fs-extra": "^0.16.5",
     "lodash": "^3.5.0",
-    "mkdirp": "^0.5.0",
     "q": "^1.2.0",
     "tracer": "^0.7.3",
     "yargs": "^3.5.4"
